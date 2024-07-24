@@ -1,16 +1,14 @@
 #include "main.hpp"
 
 #define CONFIG_NUM_PARAMS 20
-#define CONFIG_PREFIX_LENGTH 6
 
 // This value must meet the one in Firefly Luciferin
 // We are transferring byte via Serial, the maximum decimal number that can be represented with 1 byte is 255.
 // Use a multiplier to set a much bigger number using only 2 bytes.
 const int SERIAL_CHUNK_SIZE = 250;
 
-byte pre[CONFIG_PREFIX_LENGTH];
 byte config[CONFIG_NUM_PARAMS];
-uint8_t prefix[] = {'D', 'P', 's', 'o', 'f', 't'};
+unsigned short loopStart, processStart, processTime, numLedFromLuciferin;
 uint8_t hi, lo, chk, loSecondPart, usbBrightness, gpio, baudRate, whiteTemp, fireflyEffect,
         fireflyColorMode, fireflyColorOrder, ldrEn, ldrTo, ldrInt, ldrMn, ldrAction, relaySerialPin, sbSerialPin, ldrSerialPin, gpioClock;
 
@@ -18,26 +16,28 @@ State state;
 
 void setup() {
     Serial.begin(SERIAL_SPEED);
+    Serial.setTimeout(10);
     state.strip.Begin();
     state.strip.Show();
 }
 
-bool breakLoop = false;
-void loop() {
-    state.checkConnection();
+uint8_t prefix[] = {'D', 'P', 's', 'o', 'f', 't'};
 
-    int i = 0;
-    int prefixLength = Serial.readBytes((byte *) pre, CONFIG_PREFIX_LENGTH);
-    bool prefixOk = false;
-    if (prefixLength == CONFIG_PREFIX_LENGTH) {
-        if (pre[0] == prefix[0] && pre[1] == prefix[1] && pre[2] == prefix[2] && pre[3] == prefix[3] &&
-            pre[4] == prefix[4] && pre[5] == prefix[5]) {
-            prefixOk = true;
-        }
-    }
-    if (prefixOk) {
+inline bool isDataReady() {
+    return Serial.available() >= 6 && Serial.read() == prefix[0] && Serial.read() == prefix[1] && Serial.read() == prefix[2] && Serial.read() == prefix[3] && Serial.read() == prefix[4] && Serial.read() == prefix[5];
+}
+
+void loop() {
+    loopStart = millis();
+
+    state.updateStats();
+
+    if (Serial.available() == 0) {
+        state.checkConnection();
+    } else if (isDataReady()) {
         int configLen = Serial.readBytes((byte *) config, CONFIG_NUM_PARAMS);
         if (configLen == CONFIG_NUM_PARAMS) {
+            int i = 0;
             hi = config[i++];
             lo = config[i++];
             loSecondPart = config[i++];
@@ -59,10 +59,13 @@ void loop() {
             gpioClock = config[i++];
             chk = config[i++];
 
-            if (!(!breakLoop && (chk != (hi ^ lo ^ loSecondPart ^ usbBrightness ^ gpio ^ baudRate ^ whiteTemp ^ fireflyEffect
+            if (!(chk != (hi ^ lo ^ loSecondPart ^ usbBrightness ^ gpio ^ baudRate ^ whiteTemp ^ fireflyEffect
                                    ^ ldrEn ^ ldrTo ^ ldrInt ^ ldrMn ^ ldrAction ^ fireflyColorMode ^ fireflyColorOrder
-                                   ^ relaySerialPin ^ sbSerialPin ^ ldrSerialPin ^ gpioClock ^ 0x55)))) {
-                
+                                   ^ relaySerialPin ^ sbSerialPin ^ ldrSerialPin ^ gpioClock ^ 0x55))) {
+
+                processStart = millis();
+                numLedFromLuciferin = lo + (loSecondPart * SERIAL_CHUNK_SIZE) + 1;
+
                 if (usbBrightness != state.brightness) {
                     state.brightness = usbBrightness;
                 }
@@ -104,31 +107,42 @@ void loop() {
                     }
                 }
 
-                uint16_t numLedFromLuciferin = lo + (loSecondPart * SERIAL_CHUNK_SIZE) + 1;
-                uint16_t j = 0;
-                while (j < numLedFromLuciferin) {
-                    byte r, g, b;
-                    while (!Serial.available());
-                    r = Serial.read();
-                    while (!Serial.available());
-                    g = Serial.read();
-                    while (!Serial.available());
-                    b = Serial.read();
-                    state.setPixelColor(j++, r, g, b);
-                }
-                state.lastLedUpdate = millis();
-#if !DISABLE_FRAMERATE_REPORTING
-                state.frameCount++;
-#endif
+                if (numLedFromLuciferin == LEDS) {
+                    byte step = state.strip.PixelSize();
+                    byte* start = state.strip.Pixels();
+                    byte* buffer = start;
+                    byte* stop = buffer + step * numLedFromLuciferin;
+                    while (buffer != stop) {
+                        Serial.readBytes(buffer, 3);
+                        buffer += step;
+                    }
 
-                if (state.effect != Effect::mixed_rainbow) {
+                    noInterrupts();
+
+                    state.strip.Dirty();
+
+                    int j = 0;
+                    buffer = start;
+                    while (buffer != stop) {
+                        state.setPixelColor(j, buffer[0], buffer[1], buffer[2]);
+                        buffer += step;
+                        j++;
+                    }
+
+                    State::clearSerial(false);
+
                     state.ledShow();
+
+                    interrupts();
                 }
+
+                processTime = millis() - processStart;
+                state.totalProcessTime += processTime;
+                state.lastProcessTime = processTime;
+                state.highestProcessTime = max(state.highestProcessTime, processTime);
             }
         }
     }
 
-    while (!breakLoop && Serial.available()) {
-        Serial.read();
-    }
+    state.totalLoopTime += millis() - loopStart;
 }

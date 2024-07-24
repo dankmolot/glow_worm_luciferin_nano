@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Configuration.hpp"
+#include "Every.h"
 #include <NeoPixelBus.h>
 
 #if COLOR_MODE == 1
@@ -47,16 +48,52 @@ enum class Effect {
 
 class State {
 public:
+    struct Stats {
+        unsigned short frameCount = 0;
+        unsigned short totalLoopTime = 0;
+        unsigned short totalProcessTime = 0;
+        unsigned short lastProcessTime = 0;
+        unsigned short highestProcessTime = 0;
+    };
+
     NeoPixelBus<NEO_FEATURE, NEO_METHOD> strip = {LEDS, LED_PIN};
+    Stats stats = {};
 
     uint8_t brightness = 255;
     uint8_t effectInUse = 1;
     Effect effect = Effect::GlowWorm;
 
+    // Temporary vars for stats
     unsigned short frameCount = 0;
-    unsigned long lastLedUpdate = 0;
-    unsigned long lastConnectionCheck = 0;
-    unsigned long lastSerialSend = 0;
+    unsigned short totalLoopTime = 0;
+    unsigned short totalProcessTime = 0;
+    unsigned short lastProcessTime = 0;
+    unsigned short highestProcessTime = 0;
+
+    Every effectTimer = Every(1000);
+    Every serialSendTimer = Every(8000);
+
+    inline void updateStats() {
+        if (effectTimer()) {
+            stats.frameCount = frameCount;
+            stats.totalLoopTime = totalLoopTime;
+            stats.totalProcessTime = totalProcessTime;
+            stats.lastProcessTime = lastProcessTime;
+            stats.highestProcessTime = highestProcessTime;
+
+            frameCount = 0;
+            totalLoopTime = 0;
+            totalProcessTime = 0;
+            lastProcessTime = 0;
+            highestProcessTime = 0;
+        }
+    }
+
+    static inline void clearSerial(bool stopInterrupt = true) {
+        if (stopInterrupt) noInterrupts();
+        while (Serial.available()) Serial.read();
+        if (stopInterrupt) interrupts();
+    }
 
     void checkConnection();
     void sendSerialInfo();

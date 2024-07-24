@@ -7,19 +7,10 @@
 #endif
 
 void State::checkConnection() {
-    unsigned long currentMillis = millis();
-    if (currentMillis - lastConnectionCheck > 15000) {
-        lastConnectionCheck = currentMillis;
-        if (currentMillis > lastLedUpdate + 10000) {
-            strip.ClearTo(0);
-            ledShow();
-        }
-#if ENABLE_SLEEP_MODE
-        if (currentMillis > lastLedUpdate + 30000) {
-            // Go to sleep mode
-            LowPower.powerStandby(SLEEP_8S, ADC_OFF, BOD_OFF);
-        }
-#endif
+    if (frameCount == 0 && stats.frameCount == 0 && !strip.IsDirty()) {
+        strip.ClearTo(RgbwColor(0, 0, 0, 0));
+        strip.Show(false);
+        strip.Dirty();
     }
 
     sendSerialInfo();
@@ -32,33 +23,32 @@ void serialPrint(const char* message, T value) {
 }
 
 void State::sendSerialInfo() {
-    unsigned long currentMillis = millis();
-    if (currentMillis - lastSerialSend > 10000) {
-        lastSerialSend = currentMillis;
+    if (serialSendTimer()) {
+        noInterrupts();
 
-#if !DISABLE_FRAMERATE_REPORTING
-        float framerate = frameCount > 0 ? static_cast<float>(frameCount) / 10 : 0;
-        frameCount = 0;
-        serialPrint("framerate:", framerate);
-#endif
+        serialPrint("firmware:", FIRMWARE_TYPE);
+        serialPrint("ver:", VERSION);
+        // serialPrint("board:", BOARD);
+        Serial.print("board:");
+        Serial.print(stats.frameCount);
+        Serial.print(" ");
+        Serial.print(stats.totalLoopTime);
+        Serial.print(" ");
+        Serial.print(stats.totalProcessTime);
+        Serial.print(" ");        
+        Serial.print(stats.lastProcessTime);
+        Serial.print(" ");
+        Serial.println(stats.highestProcessTime);
+        serialPrint("lednum:", LEDS);
+        serialPrint("gpio:", LED_PIN);
+        serialPrint("baudrate:", BAUD_RATE);
+        serialPrint("effect:", effectInUse);
+        serialPrint("colorMode:", COLOR_MODE);
+        serialPrint("colorOrder:", COLOR_ORDER);
+        serialPrint("framerate:", stats.frameCount);
 
-#if DISABLE_REPORTING_WHILE_UPDATING
-        // Prevent sending too much information
-        // Since it can corrupt the data we are receiving
-        if (currentMillis - lastLedUpdate > 1000) {
-#endif
-            serialPrint("firmware:", FIRMWARE_TYPE);
-            serialPrint("ver:", VERSION);
-            serialPrint("board:", BOARD);
-            serialPrint("lednum:", LEDS);
-            serialPrint("gpio:", LED_PIN);
-            serialPrint("baudrate:", BAUD_RATE);
-            serialPrint("effect:", effectInUse);
-            serialPrint("colorMode:", COLOR_MODE);
-            serialPrint("colorOrder:", COLOR_ORDER);
-#if DISABLE_REPORTING_WHILE_UPDATING
-        }
-#endif
+        Serial.flush();
+        interrupts();
     }
 }
 
@@ -99,5 +89,6 @@ void State::setPixelColor(uint16_t index, uint8_t rToOrder, uint8_t gToOrder, ui
 }
 
 void State::ledShow() {
+    frameCount++;
     strip.Show(false);
 }

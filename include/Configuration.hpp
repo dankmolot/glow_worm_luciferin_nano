@@ -38,13 +38,6 @@ const uint8_t LED_PIN = 13; // Pin where your leds are connected
 // See https://github.com/Makuna/NeoPixelBus/wiki/Neo-Methods
 #define NEO_METHOD NeoWs2812xMethod
 
-// If you're experiencing issues with your leds, you can try to disable reporting
-// I helped me once, but later I didn't had same issue
-// WARNING! Because of this option, Luciferin won't show arduino in devices list when connected
-// Also will cause Luciferin to crash if you'll try to change settings
-#define DISABLE_REPORTING_WHILE_UPDATING 0 // disables unnecessary reporting when leds are updating (but not frametime)
-#define DISABLE_FRAMERATE_REPORTING 0 // disables completely framerate reporting
-
 // If you have an RGBW strip, you can set the white temperature
 // to adjust the white color
 // https://andi-siess.de/rgb-to-color-temperature/
@@ -53,17 +46,13 @@ const uint8_t kWhiteRedChannel = 255;
 const uint8_t kWhiteGreenChannel = 219;
 const uint8_t kWhiteBlueChannel = 186;
 
-// If Arduino can't connect to Luciferin
-// it will go to sleep mode
-#define ENABLE_SLEEP_MODE 1
-
 //  ------------------------------------------------------------
 //  You can change fields below, but it is not recommended.
 //  ------------------------------------------------------------
 
-#define VERSION "5.13.2"
+#define VERSION "5.14.5"
 #define FIRMWARE_TYPE "NANO" 
 #define BOARD "ATMEGA328P"
 
-#define SERIAL_RX_BUFFER_SIZE 128 + LEDS * 3
+#define SERIAL_RX_BUFFER_SIZE 32 + LEDS * 3
 #define SERIAL_TX_BUFFER_SIZE 196
